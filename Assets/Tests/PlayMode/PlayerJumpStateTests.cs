@@ -31,7 +31,7 @@ public class PlayerJumpStateTests
         }
 
         Assert.IsNotNull(player, "На сцене не найден Player с PlayerController.");
-        Assert.AreEqual(PlayerController.JumpState.InFlight, player.jumpState,
+        Assert.AreEqual(PlayerController.JumpState.Grounded, player.jumpState,
             "Стартовое состояние прыжка игрока должно быть Grounded.");
     }
 
