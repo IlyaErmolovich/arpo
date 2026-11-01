@@ -25,3 +25,9 @@
 ![](screens/32.png)
 
 
+Шаг 5: Проверка результатов и отчет
+![](screens/33.png)
+![](screens/34.png)
+![](screens/35.png)
+![](screens/36.png)
+![](screens/37.png)
