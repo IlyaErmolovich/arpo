@@ -40,7 +40,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: Library
-          key: Library-6000.3.10f1-${{ hashFiles('Packages/packages-lock.json', 'Assets/**/*.asmdef') }}
+          key: Library-6000.3.11f1-${{ hashFiles('Packages/packages-lock.json', 'Assets/**/*.asmdef') }}
 
       - name: Install GameCI CLI
         run: |
@@ -53,7 +53,7 @@ jobs:
         run: |
           game-ci test --docker --dockerShmSize=1025m \
             --engine=unity --testPlatforms='playmode;editmode;COMBINE_RESULTS' \
-            --engineVersion=6000.3.10f1 --coverageEnabled=false \
+            --engineVersion=6000.3.11f1 --coverageEnabled=false \
             --artifactsPath=artifacts --dockerIsolationMode=default \
             --containerRegistryRepository=unityci/editor \
             --containerRegistryImageVersion=3
@@ -68,6 +68,40 @@ jobs:
         with:
           name: test-results
           path: artifacts/
+
+  # ЛР №5: Настоящая компиляция игры в облаке.
+  build_game:
+    needs: run_tests
+    runs-on: ubuntu-latest
+    outputs:
+      build_status: ${{ job.status }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-Build-${{ hashFiles('Packages/packages-lock.json', 'Assets/**/*.asmdef') }}
+
+      - name: Build WebGL Player
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          targetPlatform: WebGL
+          buildMethod: BuildManager.BuildWebGL
+          unityVersion: 6000.3.11f1
+
+      - name: Upload WebGL Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WebGL-Build
+          path: Builds/WebGL
 
   # ЗАДАЧА 2: Автоматическое зеркалирование в резервный репозиторий
   mirror_repo:
@@ -100,9 +134,9 @@ jobs:
           git push --force https://x-access-token:${BACKUP_TOKEN}@github.com/IlyaErmolovich/arpo2.git HEAD:main
           echo "== Код успешно продублирован =="
 
-  # ЗАДАЧА 3: Сборка Docker-образа и публикация в GHCR.
+  # ЛР №5: Сборка Docker-образа с настоящей игрой и публикация в GHCR.
   build_docker_image:
-    needs: run_tests
+    needs: build_game
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -112,17 +146,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Create Compressed Placeholders for Docker
-        # До подключения облачной Unity-сборки создаём временную структуру.
-        run: |
-          mkdir -p Builds/WebGL/Build
-          if [ -z "$(ls -A Builds/WebGL/Build)" ]; then
-            echo "<h3>Unity 6 Compressed Game Cloud Layer</h3>" > Builds/WebGL/index.html
-            touch Builds/WebGL/Build/game.framework.js.gz
-            touch Builds/WebGL/Build/game.wasm.gz
-            touch Builds/WebGL/Build/game.data.gz
-            echo "Создана временная структура сжатых файлов для сборщика Docker."
-          fi
+      - name: Download WebGL Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: WebGL-Build
+          path: Builds/WebGL
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -140,3 +168,26 @@ jobs:
           tags: |
             ghcr.io/ilyaermolovich/platformer-game:latest
             ghcr.io/ilyaermolovich/platformer-game:${{ github.sha }}
+
+  # ЛР №5: Публикация игры в ветку gh-pages.
+  deploy_to_pages:
+    needs: build_game
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download WebGL Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: WebGL-Build
+          path: Builds/WebGL
+
+      - name: Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: Builds/WebGL
+          branch: gh-pages
